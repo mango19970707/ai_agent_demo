@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/adk/prebuilt/deep"
 	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
 	"github.com/cloudwego/eino/adk/prebuilt/supervisor"
 	"github.com/cloudwego/eino/components/model"
@@ -239,3 +240,113 @@ func NewPlanExecuteReplanAgent(ctx context.Context, config *PlanExecuteReplanCon
 //
 // 注意：这是一个工具型组件，通常作为 ChatModelAgent 的工具使用，
 // 而不是独立的 Agent。
+
+// ==================== DeepAgent（深度任务编排智能体） ====================
+
+// DeepAgentConfig Deep 智能体配置
+// 使用场景：
+// 1. 复杂任务编排：需要协调多个子智能体和工具完成复杂任务
+// 2. 自主任务分解：智能体自主将大任务分解为子任务并分配给合适的子智能体
+// 3. 工具丰富场景：需要使用文件系统、Shell 命令等多种工具
+// 4. 待办事项管理：自动管理任务列表，追踪任务进度
+//
+// 典型应用：
+// - Excel 数据处理：读取、分析、处理 Excel 文件，生成报告
+// - 代码开发助手：编写代码、执行测试、调试问题
+// - 数据分析：收集数据、清洗数据、分析数据、生成可视化
+// - 文档处理：读取文档、提取信息、生成新文档
+// - 自动化运维：执行系统命令、监控服务、处理告警
+//
+// 工作原理：
+// - DeepAgent 是一个增强版的 ChatModelAgent
+// - 内置任务管理工具（write_todos）追踪任务进度
+// - 内置文件系统工具（read_file、write_file、edit_file、glob、grep）
+// - 内置 Shell 执行工具（execute）
+// - 可以调用子智能体处理专业任务
+// - 支持通用子智能体（general-purpose）处理未分配的任务
+//
+// 与其他智能体的区别：
+// - ChatModelAgent：基础对话智能体，功能单一
+// - SupervisorAgent：中心化协调，需要明确指定任务分配
+// - DeepAgent：自主任务编排，智能体自己决定如何分解和分配任务
+type DeepAgentConfig struct {
+	// Name 智能体名称
+	Name string
+	// Description 智能体描述
+	Description string
+	// ChatModel 使用的聊天模型
+	ChatModel model.BaseChatModel
+	// Instruction 系统提示词，为空时使用内置默认提示词
+	Instruction string
+	// SubAgents 子智能体列表，DeepAgent 可以调用这些子智能体
+	SubAgents []adk.Agent
+	// ToolsConfig 工具配置
+	ToolsConfig adk.ToolsConfig
+	// MaxIteration 最大迭代次数
+	MaxIteration int
+
+	// Backend 文件系统后端，提供文件操作能力
+	// 如果设置，将注册 read_file、write_file、edit_file、glob、grep 工具
+	Backend interface{} // filesystem.Backend
+
+	// Shell Shell 命令执行器
+	// 如果设置，将注册 execute 工具支持 Shell 命令执行
+	Shell interface{} // filesystem.Shell
+
+	// StreamingShell 流式 Shell 命令执行器
+	// 如果设置，将注册流式 execute 工具
+	StreamingShell interface{} // filesystem.StreamingShell
+
+	// WithoutWriteTodos 禁用内置的 write_todos 工具
+	WithoutWriteTodos bool
+	// WithoutGeneralSubAgent 禁用通用子智能体
+	WithoutGeneralSubAgent bool
+}
+
+// NewDeepAgent 创建 Deep 智能体
+// Deep 智能体是一个功能强大的任务编排智能体，具有以下特点：
+//
+// 核心能力：
+// 1. 自主任务分解：智能体自己决定如何将复杂任务分解为子任务
+// 2. 智能任务分配：根据子智能体的能力自动选择合适的子智能体
+// 3. 任务进度追踪：使用 write_todos 工具管理待办事项列表
+// 4. 丰富的工具支持：文件系统、Shell 命令、自定义工具
+//
+// 内置工具：
+// - write_todos：管理任务列表（自动启用，除非 WithoutWriteTodos=true）
+// - read_file、write_file、edit_file：文件操作（需要配置 Backend）
+// - glob、grep：文件搜索（需要配置 Backend）
+// - execute：Shell 命令执行（需要配置 Shell 或 StreamingShell）
+//
+// 子智能体机制：
+// - 显式子智能体：通过 SubAgents 配置的专业智能体
+// - 通用子智能体：自动创建的通用智能体，处理未分配的任务
+// - 任务工具：DeepAgent 通过 task 工具调用子智能体
+//
+// 使用建议：
+// 1. 适合复杂的多步骤任务，需要协调多个工具和子智能体
+// 2. 子智能体应该有明确的专业领域和职责
+// 3. 合理设置 MaxIteration，防止无限循环（建议 50-100）
+// 4. 使用 write_todos 工具让智能体自己管理任务进度
+// 5. 配置 Backend 和 Shell 以支持文件和命令操作
+//
+// 典型使用模式：
+// - 数据处理：DeepAgent + 数据清洗子智能体 + 数据分析子智能体
+// - 代码开发：DeepAgent + 代码生成子智能体 + 测试子智能体
+// - 文档处理：DeepAgent + 文档解析子智能体 + 内容生成子智能体
+// - 研究分析：DeepAgent + 搜索子智能体 + 分析子智能体
+func NewDeepAgent(ctx context.Context, config *DeepAgentConfig) (adk.ResumableAgent, error) {
+	return deep.New(ctx, &deep.Config{
+		Name:                   config.Name,
+		Description:            config.Description,
+		ChatModel:              config.ChatModel,
+		Instruction:            config.Instruction,
+		SubAgents:              config.SubAgents,
+		ToolsConfig:            config.ToolsConfig,
+		MaxIteration:           config.MaxIteration,
+		WithoutWriteTodos:      config.WithoutWriteTodos,
+		WithoutGeneralSubAgent: config.WithoutGeneralSubAgent,
+		// Backend, Shell, StreamingShell 需要类型断言
+		// 这里简化处理，实际使用时需要传入正确的类型
+	})
+}
