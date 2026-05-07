@@ -2,20 +2,60 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/ark"
+	"github.com/cloudwego/eino-ext/components/model/claude"
 	"github.com/cloudwego/eino-ext/components/model/ollama"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 )
 
 func main() {
+	// 配置模型
+	cfg := &ModelConfig{
+		Provider:    "anthropic",
+		APIKey:      "",
+		BaseURL:     "http://118.89.81.103:8081", // 留空使用官方 API，或设置中转地址
+		Model:       "claude-opus-4-6",
+		MaxTokens:   1024,
+		Temperature: 0.7,
+	}
 
+	ctx := context.Background()
+
+	// 创建聊天模型
+	chatModel, err := NewChatModel(ctx, cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	// 准备消息
+	messages := []*schema.Message{
+		{
+			Role:    schema.User,
+			Content: "请用一句话介绍什么是人工智能？",
+		},
+	}
+
+	// 演示一次性输出
+	fmt.Println("【示例1：一次性输出】")
+	if err := GenerateOnce(ctx, chatModel, messages); err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+
+	// 演示流式输出
+	fmt.Println("\n【示例2：流式输出】")
+	if err := GenerateStream(ctx, chatModel, messages); err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
 }
 
-type modelConfig struct {
+type ModelConfig struct {
 	Provider     string
 	APIKey       string
 	BaseURL      string
@@ -27,7 +67,7 @@ type modelConfig struct {
 	Temperature  float32
 }
 
-func NewChatModel(ctx context.Context, cfg *modelConfig) (model.BaseChatModel, error) {
+func NewChatModel(ctx context.Context, cfg *ModelConfig) (model.BaseChatModel, error) {
 	switch cfg.Provider {
 	case "openai":
 		return openai.NewChatModel(ctx, &openai.ChatModelConfig{
@@ -64,7 +104,69 @@ func NewChatModel(ctx context.Context, cfg *modelConfig) (model.BaseChatModel, e
 			MaxTokens:   &cfg.MaxTokens,
 			Temperature: &cfg.Temperature,
 		})
+	case "anthropic":
+		config := &claude.Config{
+			APIKey:      cfg.APIKey,
+			Model:       cfg.Model,
+			MaxTokens:   cfg.MaxTokens,
+			Temperature: &cfg.Temperature,
+		}
+		if cfg.BaseURL != "" {
+			config.BaseURL = &cfg.BaseURL
+		}
+		return claude.NewChatModel(ctx, config)
 	default:
 		return nil, fmt.Errorf("unsupported llm provider: %s", cfg.Provider)
 	}
+}
+
+// GenerateOnce 演示一次性消息输出（阻塞直到完整响应返回）
+func GenerateOnce(ctx context.Context, chatModel model.BaseChatModel, messages []*schema.Message, opts ...model.Option) error {
+	// 调用 Generate 方法，阻塞直到模型返回完整响应
+	response, err := chatModel.Generate(ctx, messages, opts...)
+	if err != nil {
+		return fmt.Errorf("generate failed: %w", err)
+	}
+
+	// 打印完整响应
+	fmt.Println("=== 一次性输出 ===")
+	fmt.Printf("Role: %s\n", response.Role)
+	fmt.Printf("Content: %s\n", response.Content)
+	if len(response.ToolCalls) > 0 {
+		fmt.Printf("Tool Calls: %+v\n", response.ToolCalls)
+	}
+	fmt.Println()
+
+	return nil
+}
+
+// GenerateStream 演示流式消息输出（增量返回消息块）
+func GenerateStream(ctx context.Context, chatModel model.BaseChatModel, messages []*schema.Message, opts ...model.Option) error {
+	// 调用 Stream 方法，返回一个 StreamReader
+	reader, err := chatModel.Stream(ctx, messages, opts...)
+	if err != nil {
+		return fmt.Errorf("stream failed: %w", err)
+	}
+	defer reader.Close() // 确保关闭 reader
+
+	fmt.Println("=== 流式输出 ===")
+
+	// 循环读取流式响应块
+	for {
+		chunk, err := reader.Recv()
+		if errors.Is(err, io.EOF) {
+			// 流结束
+			fmt.Println("\n[流式输出完成]")
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("recv chunk failed: %w", err)
+		}
+
+		// 打印每个响应块的内容
+		fmt.Print(chunk.Content)
+	}
+	fmt.Println()
+
+	return nil
 }
