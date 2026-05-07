@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
+	openaiModel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	openaiModel "github.com/cloudwego/eino-ext/components/model/openai"
 )
 
 // ============================================================
@@ -18,7 +18,9 @@ import (
 
 // LoggingMiddleware 演示 BeforeAgent 的使用
 // 场景：在智能体运行前记录日志，修改 Instruction
-type LoggingMiddleware struct{}
+type LoggingMiddleware struct {
+	*adk.BaseChatModelAgentMiddleware // 嵌入基础中间件，自动获得所有方法的默认实现
+}
 
 func (m *LoggingMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
 	fmt.Println("[BeforeAgent] 智能体即将运行")
@@ -30,35 +32,6 @@ func (m *LoggingMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatMod
 	fmt.Printf("[BeforeAgent] 修改后 Instruction: %s\n", runCtx.Instruction)
 
 	return ctx, runCtx, nil
-}
-
-// 其他必需的接口方法（空实现）
-func (m *LoggingMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
-}
-
-func (m *LoggingMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
-}
-
-func (m *LoggingMiddleware) WrapInvokableToolCall(ctx context.Context, endpoint adk.InvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.InvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *LoggingMiddleware) WrapStreamableToolCall(ctx context.Context, endpoint adk.StreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.StreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *LoggingMiddleware) WrapEnhancedInvokableToolCall(ctx context.Context, endpoint adk.EnhancedInvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedInvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *LoggingMiddleware) WrapEnhancedStreamableToolCall(ctx context.Context, endpoint adk.EnhancedStreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedStreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *LoggingMiddleware) WrapModel(ctx context.Context, chatModel model.BaseChatModel, mc *adk.ModelContext) (model.BaseChatModel, error) {
-	return chatModel, nil
 }
 
 // TestBeforeAgent 测试 BeforeAgent 中间件
@@ -114,10 +87,8 @@ func TestBeforeAgent(t *testing.T) {
 
 // StateModifierMiddleware 演示 BeforeModelRewriteState 的使用
 // 场景：在每次模型调用前修改消息历史
-type StateModifierMiddleware struct{}
-
-func (m *StateModifierMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
-	return ctx, runCtx, nil
+type StateModifierMiddleware struct {
+	*adk.BaseChatModelAgentMiddleware // 嵌入基础中间件
 }
 
 func (m *StateModifierMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
@@ -138,37 +109,13 @@ func (m *StateModifierMiddleware) BeforeModelRewriteState(ctx context.Context, s
 	return ctx, state, nil
 }
 
-func (m *StateModifierMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
-}
-
-func (m *StateModifierMiddleware) WrapInvokableToolCall(ctx context.Context, endpoint adk.InvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.InvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *StateModifierMiddleware) WrapStreamableToolCall(ctx context.Context, endpoint adk.StreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.StreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *StateModifierMiddleware) WrapEnhancedInvokableToolCall(ctx context.Context, endpoint adk.EnhancedInvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedInvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *StateModifierMiddleware) WrapEnhancedStreamableToolCall(ctx context.Context, endpoint adk.EnhancedStreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedStreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *StateModifierMiddleware) WrapModel(ctx context.Context, chatModel model.BaseChatModel, mc *adk.ModelContext) (model.BaseChatModel, error) {
-	return chatModel, nil
-}
-
 // TestBeforeModelRewriteState 测试 BeforeModelRewriteState 中间件
 // 使用场景：
 // - 在模型调用前修改消息历史
 // - 添加系统提示或上下文信息
 // - 过滤敏感信息
 // - 压缩长对话历史
-// - 添加检索到的相关信息
+// - 添加检索到的相关信息（RAG）
 func TestBeforeModelRewriteState(t *testing.T) {
 	t.Skip("这是一个示例，需要配置 API Key 才能运行")
 
@@ -215,14 +162,8 @@ func TestBeforeModelRewriteState(t *testing.T) {
 
 // ResponseFilterMiddleware 演示 AfterModelRewriteState 的使用
 // 场景：在模型返回后过滤或修改响应
-type ResponseFilterMiddleware struct{}
-
-func (m *ResponseFilterMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
-	return ctx, runCtx, nil
-}
-
-func (m *ResponseFilterMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
+type ResponseFilterMiddleware struct {
+	*adk.BaseChatModelAgentMiddleware // 嵌入基础中间件
 }
 
 func (m *ResponseFilterMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
@@ -244,26 +185,6 @@ func (m *ResponseFilterMiddleware) AfterModelRewriteState(ctx context.Context, s
 	}
 
 	return ctx, state, nil
-}
-
-func (m *ResponseFilterMiddleware) WrapInvokableToolCall(ctx context.Context, endpoint adk.InvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.InvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ResponseFilterMiddleware) WrapStreamableToolCall(ctx context.Context, endpoint adk.StreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.StreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ResponseFilterMiddleware) WrapEnhancedInvokableToolCall(ctx context.Context, endpoint adk.EnhancedInvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedInvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ResponseFilterMiddleware) WrapEnhancedStreamableToolCall(ctx context.Context, endpoint adk.EnhancedStreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedStreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ResponseFilterMiddleware) WrapModel(ctx context.Context, chatModel model.BaseChatModel, mc *adk.ModelContext) (model.BaseChatModel, error) {
-	return chatModel, nil
 }
 
 // TestAfterModelRewriteState 测试 AfterModelRewriteState 中间件
@@ -319,18 +240,8 @@ func TestAfterModelRewriteState(t *testing.T) {
 
 // ToolLoggingMiddleware 演示 WrapInvokableToolCall 的使用
 // 场景：在工具调用前后记录日志、计时、错误处理
-type ToolLoggingMiddleware struct{}
-
-func (m *ToolLoggingMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
-	return ctx, runCtx, nil
-}
-
-func (m *ToolLoggingMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
-}
-
-func (m *ToolLoggingMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
+type ToolLoggingMiddleware struct {
+	*adk.BaseChatModelAgentMiddleware // 嵌入基础中间件
 }
 
 func (m *ToolLoggingMiddleware) WrapInvokableToolCall(ctx context.Context, endpoint adk.InvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.InvokableToolCallEndpoint, error) {
@@ -354,22 +265,6 @@ func (m *ToolLoggingMiddleware) WrapInvokableToolCall(ctx context.Context, endpo
 	return wrappedEndpoint, nil
 }
 
-func (m *ToolLoggingMiddleware) WrapStreamableToolCall(ctx context.Context, endpoint adk.StreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.StreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ToolLoggingMiddleware) WrapEnhancedInvokableToolCall(ctx context.Context, endpoint adk.EnhancedInvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedInvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ToolLoggingMiddleware) WrapEnhancedStreamableToolCall(ctx context.Context, endpoint adk.EnhancedStreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedStreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ToolLoggingMiddleware) WrapModel(ctx context.Context, chatModel model.BaseChatModel, mc *adk.ModelContext) (model.BaseChatModel, error) {
-	return chatModel, nil
-}
-
 // TestWrapInvokableToolCall 测试 WrapInvokableToolCall 中间件
 // 使用场景：
 // - 记录工具调用日志
@@ -390,34 +285,8 @@ func TestWrapInvokableToolCall(t *testing.T) {
 
 // ModelWrapperMiddleware 演示 WrapModel 的使用
 // 场景：在模型调用前后添加自定义逻辑
-type ModelWrapperMiddleware struct{}
-
-func (m *ModelWrapperMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
-	return ctx, runCtx, nil
-}
-
-func (m *ModelWrapperMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
-}
-
-func (m *ModelWrapperMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, mc *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	return ctx, state, nil
-}
-
-func (m *ModelWrapperMiddleware) WrapInvokableToolCall(ctx context.Context, endpoint adk.InvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.InvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ModelWrapperMiddleware) WrapStreamableToolCall(ctx context.Context, endpoint adk.StreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.StreamableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ModelWrapperMiddleware) WrapEnhancedInvokableToolCall(ctx context.Context, endpoint adk.EnhancedInvokableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedInvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (m *ModelWrapperMiddleware) WrapEnhancedStreamableToolCall(ctx context.Context, endpoint adk.EnhancedStreamableToolCallEndpoint, tCtx *adk.ToolContext) (adk.EnhancedStreamableToolCallEndpoint, error) {
-	return endpoint, nil
+type ModelWrapperMiddleware struct {
+	*adk.BaseChatModelAgentMiddleware // 嵌入基础中间件
 }
 
 // LoggingChatModel 包装模型，添加日志功能
@@ -547,6 +416,8 @@ func TestWrapModel(t *testing.T) {
 //    - 限流控制
 //
 // 最佳实践：
+// - 所有中间件都嵌入 *adk.BaseChatModelAgentMiddleware，自动获得默认实现
+// - 只需覆盖需要自定义的方法，无需实现所有 8 个方法
 // - 中间件应该职责单一，每个中间件只做一件事
 // - 多个中间件按顺序执行，注意执行顺序
 // - 中间件应该是无状态的，或者使用 context 传递状态
