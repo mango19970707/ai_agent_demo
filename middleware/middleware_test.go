@@ -13,16 +13,72 @@ import (
 )
 
 // ============================================================
+// 使用建议总结
+// ============================================================
+
+// 中间件使用场景总结：
+//
+// 1. BeforeAgent - 智能体运行前
+//    - 修改 Instruction（添加安全提示、格式要求）
+//    - 修改工具配置
+//    - 添加全局上下文
+//    - 记录智能体启动日志
+//
+// 2. BeforeModelRewriteState - 模型调用前
+//    - 修改消息历史（添加系统提示、压缩历史）
+//    - 过滤敏感信息
+//    - 添加检索到的相关信息（RAG）
+//    - 实现对话历史管理策略
+//
+// 3. AfterModelRewriteState - 模型调用后
+//    - 修改模型响应（过滤敏感词、添加免责声明）
+//    - 格式化输出
+//    - 记录响应日志
+//    - 实现内容审核
+//
+// 4. WrapInvokableToolCall - 同步工具调用
+//    - 记录工具调用日志
+//    - 计算工具执行时间
+//    - 添加错误处理和重试
+//    - 验证工具参数
+//    - 缓存工具结果
+//
+// 5. WrapStreamableToolCall - 流式工具调用
+//    - 类似 WrapInvokableToolCall，但用于流式工具
+//
+// 6. WrapEnhancedInvokableToolCall - 增强型同步工具调用
+//    - 类似 WrapInvokableToolCall，但用于增强型工具
+//
+// 7. WrapEnhancedStreamableToolCall - 增强型流式工具调用
+//    - 类似 WrapStreamableToolCall，但用于增强型工具
+//
+// 8. WrapModel - 模型调用
+//    - 记录模型调用日志和成本
+//    - 添加重试逻辑
+//    - 实现模型降级
+//    - 添加缓存层
+//    - 限流控制
+//
+// 最佳实践：
+// - 所有中间件都嵌入 *adk.BaseChatModelAgentMiddleware，自动获得默认实现
+// - 只需覆盖需要自定义的方法，无需实现所有 8 个方法
+// - 中间件应该职责单一，每个中间件只做一件事
+// - 多个中间件按顺序执行，注意执行顺序
+// - 中间件应该是无状态的，或者使用 context 传递状态
+// - 错误处理要完善，避免中间件导致整个流程失败
+// - 性能敏感的场景要注意中间件的开销
+
+// ============================================================
 // 1. BeforeAgent - 在智能体运行前修改配置
 // ============================================================
 
 // LoggingMiddleware 演示 BeforeAgent 的使用
 // 场景：在智能体运行前记录日志，修改 Instruction
-type LoggingMiddleware struct {
+type LoggingMiddleware1 struct {
 	*adk.BaseChatModelAgentMiddleware // 嵌入基础中间件，自动获得所有方法的默认实现
 }
 
-func (m *LoggingMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
+func (m *LoggingMiddleware1) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
 	fmt.Println("[BeforeAgent] 智能体即将运行")
 	fmt.Printf("[BeforeAgent] 原始 Instruction: %s\n", runCtx.Instruction)
 
@@ -367,59 +423,3 @@ func TestWrapModel(t *testing.T) {
 		}
 	}
 }
-
-// ============================================================
-// 使用建议总结
-// ============================================================
-
-// 中间件使用场景总结：
-//
-// 1. BeforeAgent - 智能体运行前
-//    - 修改 Instruction（添加安全提示、格式要求）
-//    - 修改工具配置
-//    - 添加全局上下文
-//    - 记录智能体启动日志
-//
-// 2. BeforeModelRewriteState - 模型调用前
-//    - 修改消息历史（添加系统提示、压缩历史）
-//    - 过滤敏感信息
-//    - 添加检索到的相关信息（RAG）
-//    - 实现对话历史管理策略
-//
-// 3. AfterModelRewriteState - 模型调用后
-//    - 修改模型响应（过滤敏感词、添加免责声明）
-//    - 格式化输出
-//    - 记录响应日志
-//    - 实现内容审核
-//
-// 4. WrapInvokableToolCall - 同步工具调用
-//    - 记录工具调用日志
-//    - 计算工具执行时间
-//    - 添加错误处理和重试
-//    - 验证工具参数
-//    - 缓存工具结果
-//
-// 5. WrapStreamableToolCall - 流式工具调用
-//    - 类似 WrapInvokableToolCall，但用于流式工具
-//
-// 6. WrapEnhancedInvokableToolCall - 增强型同步工具调用
-//    - 类似 WrapInvokableToolCall，但用于增强型工具
-//
-// 7. WrapEnhancedStreamableToolCall - 增强型流式工具调用
-//    - 类似 WrapStreamableToolCall，但用于增强型工具
-//
-// 8. WrapModel - 模型调用
-//    - 记录模型调用日志和成本
-//    - 添加重试逻辑
-//    - 实现模型降级
-//    - 添加缓存层
-//    - 限流控制
-//
-// 最佳实践：
-// - 所有中间件都嵌入 *adk.BaseChatModelAgentMiddleware，自动获得默认实现
-// - 只需覆盖需要自定义的方法，无需实现所有 8 个方法
-// - 中间件应该职责单一，每个中间件只做一件事
-// - 多个中间件按顺序执行，注意执行顺序
-// - 中间件应该是无状态的，或者使用 context 传递状态
-// - 错误处理要完善，避免中间件导致整个流程失败
-// - 性能敏感的场景要注意中间件的开销
